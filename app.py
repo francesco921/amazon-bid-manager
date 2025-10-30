@@ -8,7 +8,7 @@ load_dotenv()
 
 CLIENT_ID = os.getenv("AMAZON_CLIENT_ID", "")
 REDIRECT_URI = os.getenv("AMAZON_REDIRECT_URI", "http://localhost:8501/callback")
-SCOPE = "cpc_advertising:campaign_management"
+SCOPE = "advertising::campaign_management"
 AUTH_URL = "https://www.amazon.com/ap/oa"
 
 st.set_page_config(page_title="Amazon Ads Login")
