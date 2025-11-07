@@ -21,15 +21,29 @@ client = st.session_state["client"]
 # Recupero variabili
 MANAGER_ENTITY_ID = st.secrets.get("AMAZON_MANAGER_ENTITY_ID", "").strip()
 
-# Helper: mappa entityId -> profileId
-def get_profile_id_from_entity_id(entity_id):
+# Helper: mappa entityId -> profileId + regione
+
+def get_profile_info_from_entity_id(entity_id):
     try:
         profiles = client.list_profiles()
         for profile in profiles:
-            if profile.get("accountInfo", {}).get("entityId") == entity_id:
-                return profile.get("profileId")
+            acc_info = profile.get("accountInfo", {})
+            if acc_info.get("entityId") == entity_id:
+                return {
+                    "profileId": profile.get("profileId"),
+                    "countryCode": acc_info.get("countryCode")
+                }
     except Exception as e:
         st.error(f"Errore nel mapping entity -> profile: {e}")
+    return None
+
+def infer_region_from_country(country_code):
+    if country_code in ["US", "CA", "MX"]:
+        return "NA"
+    elif country_code in ["DE", "FR", "IT", "ES", "UK", "GB", "NL", "SE", "PL", "BE"]:
+        return "EU"
+    elif country_code in ["JP", "SG", "AE", "AU"]:
+        return "FE"
     return None
 
 # ----------------------------------------
@@ -77,16 +91,28 @@ with col_a:
         st.warning("Imposta AMAZON_MANAGER_ENTITY_ID nei secrets o nel .env")
 
 with col_b:
-    client_entity_id = st.text_input("Profile ID cliente", help="ENTITY3... visibile nella URL")
+    client_entity_id = st.text_input("ENTITY ID account cliente", help="ENTITY3... visibile nella URL")
 
-if MANAGER_ENTITY_ID and client_entity_id:
+selected_region = None
+profile_info = None
+
+if client_entity_id:
+    profile_info = get_profile_info_from_entity_id(client_entity_id)
+    if profile_info:
+        region_auto = infer_region_from_country(profile_info["countryCode"])
+        st.success(f"Regione rilevata automaticamente: {region_auto}")
+        selected_region = region_auto
+    else:
+        selected_region = st.selectbox("Seleziona regione cliente", ["NA", "EU", "FE"])
+
+if MANAGER_ENTITY_ID and client_entity_id and selected_region:
     if st.button("Genera link di invito API"):
         try:
-            profile_id = get_profile_id_from_entity_id(client_entity_id)
+            profile_id = profile_info["profileId"] if profile_info else None
             if not profile_id:
                 st.error("Impossibile trovare profileId per questo ENTITY ID")
             else:
-                link = client.create_review_link(profile_id, MANAGER_ENTITY_ID)
+                link = client.create_review_link(profile_id, MANAGER_ENTITY_ID, selected_region)
                 st.success("Link generato con successo")
                 st.code(link)
         except Exception as e:
@@ -118,10 +144,7 @@ if profiles:
 
     with st.sidebar:
         st.subheader("Profilo cliente")
-        selected_profile_label = st.selectbox(
-            "Seleziona profilo Amazon Ads",
-            list(profile_options.keys()),
-        )
+        selected_profile_label = st.selectbox("Seleziona profilo Amazon Ads", list(profile_options.keys()))
         profile_id_selected = profile_options[selected_profile_label]
 else:
     st.info("Nessun profilo disponibile. Verifica i permessi del tuo account manager.")
@@ -131,7 +154,6 @@ if not profile_id_selected:
 
 st.subheader(f"Profilo selezionato: {selected_profile_label}")
 
-# 2.2 Recupero campagne SP del profilo selezionato
 try:
     campaigns = client.get_sp_campaigns(profile_id_selected)
 except Exception as e:
@@ -142,23 +164,15 @@ if not campaigns:
     st.info("Nessuna campagna Sponsored Products trovata per questo profilo.")
     st.stop()
 
-campaign_map = {
-    f"{c.get('name', 'Senza nome')} (ID {c.get('campaignId')})": c
-    for c in campaigns
-}
+campaign_map = {f"{c.get('name', 'Senza nome')} (ID {c.get('campaignId')})": c for c in campaigns}
 
-selected_campaign_label = st.selectbox(
-    "Seleziona una campagna da gestire",
-    list(campaign_map.keys()),
-)
-
+selected_campaign_label = st.selectbox("Seleziona una campagna da gestire", list(campaign_map.keys()))
 selected_campaign = campaign_map[selected_campaign_label]
 campaign_id = selected_campaign.get("campaignId")
 
 st.write(f"Campagna selezionata ID: {campaign_id}")
 
 col_info1, col_info2, col_info3 = st.columns(3)
-
 with col_info1:
     st.write(f"Stato: {selected_campaign.get('state', 'n.d.')}")
 with col_info2:
@@ -168,9 +182,7 @@ with col_info3:
 
 st.markdown("---")
 
-# 2.3 Conteggio target interni alla campagna
 st.subheader("Target interni alla campagna")
-
 if st.button("Conta target della campagna"):
     try:
         targets = client.get_sp_targets_for_campaign(profile_id_selected, campaign_id)
@@ -196,22 +208,15 @@ if "last_target_count" in st.session_state:
 
 st.markdown("---")
 
-# ----------------------------------------
-# Sezione 3 - Modifica bid campagna selezionata
-# ----------------------------------------
 st.header("3. Modifica bid della campagna selezionata")
-
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     direction = st.radio("Tipo modifica", ["Incrementa", "Decrementa"], index=0)
-
 with col2:
     delta = st.number_input("Variazione bid (valuta account)", min_value=0.0, step=0.01, format="%.02f")
-
 with col3:
     min_bid = st.number_input("Bid minimo (opzionale)", min_value=0.0, step=0.01, format="%.02f")
-
 with col4:
     max_bid = st.number_input("Bid massimo (opzionale)", min_value=0.0, step=0.01, format="%.02f")
 
@@ -224,7 +229,6 @@ if st.button("Applica modifica ai bid della campagna"):
         dir_flag = "up" if direction == "Incrementa" else "down"
         min_bid_value = min_bid if min_bid > 0 else None
         max_bid_value = max_bid if max_bid > 0 else None
-
         try:
             result = client.update_sp_bids_for_campaign(
                 profile_id=profile_id_selected,
@@ -234,14 +238,11 @@ if st.button("Applica modifica ai bid della campagna"):
                 min_bid=min_bid_value,
                 max_bid=max_bid_value,
             )
-
             updated = result.get("updated", 0)
             st.success(f"Aggiornati {updated} target nella campagna.")
-
             preview = result.get("preview", [])
             if preview:
                 st.write("Anteprima modifiche (prime righe):")
                 st.dataframe(preview[:20])
-
         except Exception as e:
-            st.error(f"Errore durante l'aggiornamento dei bid: {e}")
+            st.error(f"Errore durante l aggiornamento dei bid: {e}")
