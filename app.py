@@ -7,6 +7,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from amazon_ads_api import AmazonAdsClient
+from auth import get_access_token  # ✅ Import per token automatico
 
 # Carica variabili da .env
 load_dotenv()
@@ -21,7 +22,6 @@ client = st.session_state["client"]
 
 # Recupero variabili di ambiente
 MANAGER_ENTITY_ID = os.getenv("AMAZON_MANAGER_ENTITY_ID", "").strip()
-
 
 # ----------------------------------------
 # Sezione 0 - Stato connessione base
@@ -53,7 +53,6 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Errore test profili: {e}")
 
-
 # ----------------------------------------
 # Sezione 1 - Generatore link accesso come Editor (ENTITY)
 # ----------------------------------------
@@ -82,16 +81,13 @@ if MANAGER_ENTITY_ID and client_entity_id:
 elif client_entity_id and not MANAGER_ENTITY_ID:
     st.error("Devi impostare AMAZON_MANAGER_ENTITY_ID nel .env per generare il link.")
 
-
 st.markdown("---")
-
 
 # ----------------------------------------
 # Sezione 2 - Dashboard campagne per profilo
 # ----------------------------------------
 st.header("2. Dashboard campagne per profilo cliente")
 
-# 2.1 Recupero profili e selezione dalla sidebar
 try:
     profiles = client.list_profiles()
 except Exception as e:
@@ -135,7 +131,6 @@ if not campaigns:
     st.info("Nessuna campagna Sponsored Products trovata per questo profilo.")
     st.stop()
 
-# Mappa per selezione singola campagna
 campaign_map = {
     f"{c.get('name', 'Senza nome')} (ID {c.get('campaignId')})": c
     for c in campaigns
@@ -187,7 +182,6 @@ if "last_target_count" in st.session_state:
         ]
         st.write("Anteprima primi target (max 20):")
         st.dataframe(preview_targets)
-
 
 st.markdown("---")
 
