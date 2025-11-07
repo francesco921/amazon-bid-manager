@@ -99,43 +99,30 @@ profile_info = None
 
 if client_entity_id:
     profile_info = get_profile_info_from_entity_id(client_entity_id)
+    region_auto = None
     if profile_info:
         region_auto = infer_region_from_country(profile_info["countryCode"])
-        st.success(f"Regione rilevata automaticamente: {region_auto}")
-        selected_region = region_auto
-    else:
-        selected_region = st.selectbox("Seleziona manualmente la regione del cliente", ["NA", "EU", "FE"])
+        st.info(f"Regione rilevata automaticamente: {region_auto}")
 
-# Mappa login URL per regione
-login_url_map = {
-    "NA": "https://www.amazon.com/ap/oa",
-    "EU": "https://www.amazon.co.uk/ap/oa",
-    "FE": "https://www.amazon.co.jp/ap/oa"
-}
+    selected_region = st.selectbox(
+        "Seleziona o conferma la regione del cliente",
+        options=["NA", "EU", "FE"],
+        index=["NA", "EU", "FE"].index(region_auto) if region_auto in ["NA", "EU", "FE"] else 0
+    )
 
-# Generazione link approvazione
 if MANAGER_ENTITY_ID and client_entity_id and selected_region:
-    st.markdown("### Link approvazione API da inviare al cliente")
-
-    login_base = login_url_map.get(selected_region)
-    client_id = os.getenv("AMAZON_CLIENT_ID", "")
-    redirect_uri = os.getenv("AMAZON_REDIRECT_URI", "")
-    scope = "advertising::campaign_management"
-
-    params = {
-        "client_id": client_id,
-        "scope": scope,
-        "response_type": "code",
-        "redirect_uri": redirect_uri
-    }
-
-    final_url = f"{login_base}?{urlencode(params)}"
-    st.code(final_url, language="text")
-    st.markdown(f"[🔗 Clicca qui per testare il link di login Amazon Ads]({final_url})", unsafe_allow_html=True)
-
-    st.info("Il cliente dovrà accedere e autorizzare, poi ti invierà il `code` da usare per generare il `refresh_token`.")
-
-st.markdown("---")
+    if st.button("Genera link di invito API"):
+        try:
+            profile_id = profile_info["profileId"] if profile_info else None
+            if not profile_id:
+                st.error("Impossibile trovare profileId per questo ENTITY ID")
+            else:
+                link = client.create_review_link(profile_id, MANAGER_ENTITY_ID, selected_region)
+                st.success("Link generato con successo (Editor)")
+                st.code(link)
+                st.markdown(f"[🔗 Clicca qui per testare il link]({link})", unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Errore nella generazione del link: {e}")
 
 # ----------------------------------------
 # Sezione 2 - Dashboard campagne per profilo
