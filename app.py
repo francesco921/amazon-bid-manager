@@ -21,7 +21,7 @@ if "client" not in st.session_state:
 client = st.session_state["client"]
 
 # Recupero variabili di ambiente
-MANAGER_ENTITY_ID = os.getenv("AMAZON_MANAGER_ENTITY_ID", "").strip()
+MANAGER_ENTITY_ID = st.secrets.get("AMAZON_MANAGER_ENTITY_ID", "").strip()
 
 # ----------------------------------------
 # Sezione 0 - Stato connessione base
