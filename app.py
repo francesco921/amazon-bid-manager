@@ -3,6 +3,7 @@
 import os
 import streamlit as st
 from dotenv import load_dotenv
+from urllib.parse import urlencode
 
 from amazon_ads_api import AmazonAdsClient
 from auth import get_access_token
@@ -103,20 +104,36 @@ if client_entity_id:
         st.success(f"Regione rilevata automaticamente: {region_auto}")
         selected_region = region_auto
     else:
-        selected_region = st.selectbox("Seleziona regione cliente", ["NA", "EU", "FE"])
+        selected_region = st.selectbox("Seleziona manualmente la regione del cliente", ["NA", "EU", "FE"])
 
+# Mappa login URL per regione
+login_url_map = {
+    "NA": "https://www.amazon.com/ap/oa",
+    "EU": "https://www.amazon.co.uk/ap/oa",
+    "FE": "https://www.amazon.co.jp/ap/oa"
+}
+
+# Generazione link approvazione
 if MANAGER_ENTITY_ID and client_entity_id and selected_region:
-    if st.button("Genera link di invito API"):
-        try:
-            profile_id = profile_info["profileId"] if profile_info else None
-            if not profile_id:
-                st.error("Impossibile trovare profileId per questo ENTITY ID")
-            else:
-                link = client.create_review_link(profile_id, MANAGER_ENTITY_ID, selected_region)
-                st.success("Link generato con successo")
-                st.code(link)
-        except Exception as e:
-            st.error(f"Errore nella generazione del link: {e}")
+    st.markdown("### Link approvazione API da inviare al cliente")
+
+    login_base = login_url_map.get(selected_region)
+    client_id = os.getenv("AMAZON_CLIENT_ID", "")
+    redirect_uri = os.getenv("AMAZON_REDIRECT_URI", "")
+    scope = "advertising::campaign_management"
+
+    params = {
+        "client_id": client_id,
+        "scope": scope,
+        "response_type": "code",
+        "redirect_uri": redirect_uri
+    }
+
+    final_url = f"{login_base}?{urlencode(params)}"
+    st.code(final_url, language="text")
+    st.markdown(f"[🔗 Clicca qui per testare il link di login Amazon Ads]({final_url})", unsafe_allow_html=True)
+
+    st.info("Il cliente dovrà accedere e autorizzare, poi ti invierà il `code` da usare per generare il `refresh_token`.")
 
 st.markdown("---")
 
@@ -245,4 +262,4 @@ if st.button("Applica modifica ai bid della campagna"):
                 st.write("Anteprima modifiche (prime righe):")
                 st.dataframe(preview[:20])
         except Exception as e:
-            st.error(f"Errore durante l aggiornamento dei bid: {e}")
+            st.error(f"Errore durante l'aggiornamento dei bid: {e}")
