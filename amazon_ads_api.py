@@ -1,4 +1,3 @@
-# amazon_ads_api.py
 import os
 import time
 import requests
@@ -17,7 +16,7 @@ class AmazonAdsClient:
         self.access_token_expiry = 0
 
     def refresh_access_token(self):
-        # se il token è ancora valido, lo riusa
+        # Se il token è ancora valido, lo riusa
         if self.access_token and time.time() < self.access_token_expiry - 60:
             return self.access_token
 
@@ -43,7 +42,7 @@ class AmazonAdsClient:
             "Accept": "application/json",
             "Amazon-Advertising-API-ClientId": CLIENT_ID,
         }
-        # Per le chiamate sulle campagne serve lo scope del profilo
+        # Se profilo specificato, aggiunge scope
         if profile_id is not None:
             headers["Amazon-Advertising-API-Scope"] = str(profile_id)
         return headers
@@ -69,8 +68,6 @@ class AmazonAdsClient:
     def get_sp_targets_for_campaign(self, profile_id, campaign_id):
         """
         Legge i target (keyword/ASIN, ecc.) di una singola campagna SP.
-        Endpoint da verificare sui docs:
-        tipicamente /sp/targets con filtro campaignId.
         """
         url = f"{ADS_API_BASE_URL}/sp/targets"
         params = {
@@ -91,8 +88,6 @@ class AmazonAdsClient:
     ):
         """
         Incrementa o decrementa i bid di tutti i target di una campagna SP.
-        direction: "up" oppure "down"
-        delta: variazione in valuta account (dollari/euro ecc.)
         """
         targets = self.get_sp_targets_for_campaign(profile_id, campaign_id)
 
@@ -120,7 +115,6 @@ class AmazonAdsClient:
             if new_bid != old_bid:
                 updates.append(
                     {
-                        # a seconda che tu stia usando targets o keywords
                         "targetId": target_id,
                         "bid": new_bid,
                     }
@@ -140,7 +134,6 @@ class AmazonAdsClient:
                 "api_response": None,
             }
 
-        # Endpoint da verificare: spesso è /sp/targets/bid o /sp/keywords/bid
         url = f"{ADS_API_BASE_URL}/sp/targets/bid"
         resp = requests.put(url, headers=self._headers(profile_id), json=updates)
         resp.raise_for_status()
@@ -150,3 +143,19 @@ class AmazonAdsClient:
             "preview": preview_rows,
             "api_response": resp.json(),
         }
+
+    def create_review_link(self, profile_id, manager_entity_id, region_code):
+        """
+        Crea il link di approvazione da inviare al cliente.
+        """
+        url = f"{ADS_API_BASE_URL}/v2/profiles/{profile_id}/authorization"
+        data = {
+            "clientId": CLIENT_ID,
+            "entityId": manager_entity_id,
+            "region": region_code
+        }
+        headers = self._headers(profile_id)
+        resp = requests.post(url, headers=headers, json=data)
+        resp.raise_for_status()
+        payload = resp.json()
+        return payload.get("approvalLink", "")
