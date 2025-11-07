@@ -7,7 +7,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from amazon_ads_api import AmazonAdsClient
-from auth import get_access_token  # ✅ Import per token automatico
+from auth import get_access_token  # ✅ token automatico
 
 # Carica variabili da .env
 load_dotenv()
@@ -68,7 +68,10 @@ with col_a:
         st.warning("Imposta AMAZON_MANAGER_ENTITY_ID nel file .env con il tuo ENTITY manager.")
 
 with col_b:
-    client_entity_id = st.text_input("ENTITY ID account cliente", help="Copiato dalla URL dell account Ads del cliente")
+    client_entity_id = st.text_input(
+        "ENTITY ID account cliente",
+        help="Copiato dalla URL dell'account Ads del cliente (es. ENTITY3...)"
+    )
 
 if MANAGER_ENTITY_ID and client_entity_id:
     review_link = (
@@ -76,8 +79,9 @@ if MANAGER_ENTITY_ID and client_entity_id:
         f"advertisingAccounts/{client_entity_id}/"
         f"managerAccounts/{MANAGER_ENTITY_ID}/review-link-request"
     )
-    st.write("Link da inviare al cliente per concederti i permessi come Editor:")
+    st.write("👉 Link da inviare al cliente per concederti i permessi come Editor:")
     st.code(review_link)
+    st.write("Il cliente dovrà cliccare questo link, accettare il collegamento e concederti i permessi ‘Editor’.")
 elif client_entity_id and not MANAGER_ENTITY_ID:
     st.error("Devi impostare AMAZON_MANAGER_ENTITY_ID nel .env per generare il link.")
 
@@ -88,6 +92,7 @@ st.markdown("---")
 # ----------------------------------------
 st.header("2. Dashboard campagne per profilo cliente")
 
+# 2.1 Recupero profili e selezione dalla sidebar
 try:
     profiles = client.list_profiles()
 except Exception as e:
@@ -131,6 +136,7 @@ if not campaigns:
     st.info("Nessuna campagna Sponsored Products trovata per questo profilo.")
     st.stop()
 
+# Mappa per selezione singola campagna
 campaign_map = {
     f"{c.get('name', 'Senza nome')} (ID {c.get('campaignId')})": c
     for c in campaigns
