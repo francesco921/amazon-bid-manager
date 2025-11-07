@@ -1,15 +1,13 @@
 # app.py
 
 import os
-from urllib.parse import urlencode
-import requests
 import streamlit as st
 from dotenv import load_dotenv
 
 from amazon_ads_api import AmazonAdsClient
-from auth import get_access_token  # ✅ token automatico
+from auth import get_access_token
 
-# Carica variabili da .env
+# Carica variabili da .env o da secrets
 load_dotenv()
 
 st.set_page_config(page_title="Amazon Bid Manager", layout="wide")
@@ -20,9 +18,19 @@ if "client" not in st.session_state:
 
 client = st.session_state["client"]
 
-# Recupero variabili di ambiente
+# Recupero variabili
 MANAGER_ENTITY_ID = st.secrets.get("AMAZON_MANAGER_ENTITY_ID", "").strip()
-CLIENT_ID = st.secrets.get("AMAZON_CLIENT_ID", "").strip()
+
+# Helper: mappa entityId -> profileId
+def get_profile_id_from_entity_id(entity_id):
+    try:
+        profiles = client.list_profiles()
+        for profile in profiles:
+            if profile.get("accountInfo", {}).get("entityId") == entity_id:
+                return profile.get("profileId")
+    except Exception as e:
+        st.error(f"Errore nel mapping entity -> profile: {e}")
+    return None
 
 # ----------------------------------------
 # Sezione 0 - Stato connessione base
@@ -31,10 +39,10 @@ st.title("Amazon Bid Manager")
 
 with st.sidebar:
     st.subheader("Stato connessione")
-    client_id_env = os.getenv("AMAZON_CLIENT_ID", "")
+    client_id = os.getenv("AMAZON_CLIENT_ID", "")
     refresh_token_present = bool(os.getenv("AMAZON_REFRESH_TOKEN", "").strip())
 
-    if client_id_env:
+    if client_id:
         st.text("CLIENT_ID presente")
     else:
         st.error("AMAZON_CLIENT_ID non impostato nel .env")
@@ -55,7 +63,7 @@ with st.sidebar:
             st.error(f"Errore test profili: {e}")
 
 # ----------------------------------------
-# Sezione 1 - Generatore link accesso come Editor (ENTITY)
+# Sezione 1 - Generatore link accesso come Editor (API)
 # ----------------------------------------
 st.header("1. Generatore link accesso come Editor")
 
@@ -66,37 +74,28 @@ with col_a:
     if MANAGER_ENTITY_ID:
         st.code(MANAGER_ENTITY_ID)
     else:
-        st.warning("Imposta AMAZON_MANAGER_ENTITY_ID nel file .env o secrets.")
+        st.warning("Imposta AMAZON_MANAGER_ENTITY_ID nei secrets o nel .env")
 
 with col_b:
-    client_entity_id = st.text_input("Profile ID cliente", help="Es. ENTITY3PAZTY4G0XW2Y")
+    client_entity_id = st.text_input("Profile ID cliente", help="ENTITY3... visibile nella URL")
 
-if st.button("Genera link di invito API"):
-    try:
-        access_token = get_access_token()
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Amazon-Advertising-API-ClientId": CLIENT_ID,
-            "Content-Type": "application/json"
-        }
-        payload = {"managerAccountId": MANAGER_ENTITY_ID}
-        url = f"https://advertising-api.amazon.com/v2/profiles/{client_entity_id}/managerAccounts/linkRequest"
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        link = data.get("link")
-        if link:
-            st.success("✅ Link generato correttamente:")
-            st.code(link)
-        else:
-            st.error("❌ Nessun link ricevuto dalla API.")
-    except Exception as e:
-        st.error(f"Errore nella generazione del link: {e}")
+if MANAGER_ENTITY_ID and client_entity_id:
+    if st.button("Genera link di invito API"):
+        try:
+            profile_id = get_profile_id_from_entity_id(client_entity_id)
+            if not profile_id:
+                st.error("Impossibile trovare profileId per questo ENTITY ID")
+            else:
+                link = client.create_review_link(profile_id, MANAGER_ENTITY_ID)
+                st.success("Link generato con successo")
+                st.code(link)
+        except Exception as e:
+            st.error(f"Errore nella generazione del link: {e}")
 
 st.markdown("---")
 
 # ----------------------------------------
-# Sezione 2 - Dashboard campagne per profilo cliente
+# Sezione 2 - Dashboard campagne per profilo
 # ----------------------------------------
 st.header("2. Dashboard campagne per profilo cliente")
 
@@ -132,6 +131,7 @@ if not profile_id_selected:
 
 st.subheader(f"Profilo selezionato: {selected_profile_label}")
 
+# 2.2 Recupero campagne SP del profilo selezionato
 try:
     campaigns = client.get_sp_campaigns(profile_id_selected)
 except Exception as e:
@@ -168,6 +168,7 @@ with col_info3:
 
 st.markdown("---")
 
+# 2.3 Conteggio target interni alla campagna
 st.subheader("Target interni alla campagna")
 
 if st.button("Conta target della campagna"):
@@ -196,7 +197,7 @@ if "last_target_count" in st.session_state:
 st.markdown("---")
 
 # ----------------------------------------
-# Sezione 3 - Modifica bid della campagna selezionata
+# Sezione 3 - Modifica bid campagna selezionata
 # ----------------------------------------
 st.header("3. Modifica bid della campagna selezionata")
 
@@ -233,6 +234,7 @@ if st.button("Applica modifica ai bid della campagna"):
                 min_bid=min_bid_value,
                 max_bid=max_bid_value,
             )
+
             updated = result.get("updated", 0)
             st.success(f"Aggiornati {updated} target nella campagna.")
 
